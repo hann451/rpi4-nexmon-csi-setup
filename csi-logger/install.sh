@@ -42,7 +42,7 @@ if [[ -f "${SCRIPT_DIR}/../scripts/start_csi.sh" ]]; then
   chmod +x /opt/csi-logger/start_csi.sh
 fi
 
-mkdir -p /home/pi/csi_data/pcap /home/pi/csi_data/labels /home/pi/.config/rclone
+mkdir -p /home/pi/csi_data /home/pi/.config/rclone
 chown -R pi:pi /home/pi/csi_data /home/pi/.config/rclone
 
 echo "[6/6] Enabling csi-logger.service..."

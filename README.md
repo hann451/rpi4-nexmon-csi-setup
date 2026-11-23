@@ -246,6 +246,44 @@ bash start_csi.sh 36/80 1 1
    tailscale ip -4
    ```
 
+### Google Drive 上のフォルダ構造と CSV 連携
+
+Google Drive (`gdrive:rpi4_nexmon_csi`) には以下の日付別フォルダ構成で自動保存されます：
+
+```text
+rpi4_nexmon_csi/
+├── labels.csv                # 全期間のイベント・メモ履歴
+├── labels.jsonl              # 全期間のイベント履歴 (JSON Lines)
+├── segments.csv              # 全期間の .pcap セグメント一覧 (相対パス・時刻・ラベル・メモ付き)
+└── YYYY-MM-DD/
+    ├── labels_YYYY-MM-DD.csv
+    ├── segments_YYYY-MM-DD.csv
+    └── pcap/
+        └── csi_YYYYMMDD_HHMMSS_<presence>_<window>.pcap
+```
+
+`segments.csv` の各行には `segment_id`、`relative_path`（例: `2026-11-24/pcap/csi_20261124_002500_in_room_closed.pcap`）、`start_epoch_ms`、`end_epoch_ms`、`label_class`（`in_room__closed` 等4クラス）、`memos` が入っています。Python (`pandas`) で `segments.csv` と `labels.csv` を紐づけて読み込む例：
+
+```python
+import pandas as pd
+from pathlib import Path
+
+root = Path("/content/drive/MyDrive/rpi4_nexmon_csi")  # Colab / G:ドライブ等のパス
+segments = pd.read_csv(root / "segments.csv")
+labels = pd.read_csv(root / "labels.csv")
+
+# 1) segment_id でイベント一覧を紐づける
+merged = segments.merge(
+    labels.groupby("segment_id")["memo"].apply(lambda s: " | ".join(s.dropna())).reset_index(),
+    on="segment_id",
+    how="left",
+)
+
+# 2) 各 .pcap のフルパスを生成
+merged["pcap_path"] = merged["relative_path"].map(lambda p: root / p)
+print(merged[["segment_id", "label_class", "duration_sec", "memos", "pcap_path"]].head())
+```
+
 ## 8. バックアップ
 
 セットアップ完了後・Nexmon CSI インストール後に、USB メモリ全体を生イメージとして保存しておく（Win32DiskImager の Read、「Read Only Allocated Partitions」はオフ）。

@@ -9,6 +9,7 @@ import csv
 import datetime
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -23,12 +24,10 @@ from typing import Any, Dict, List, Optional
 # Configuration
 # ---------------------------------------------------------------------------
 DATA_DIR = Path(os.environ.get("CSI_DATA_DIR", "/home/pi/csi_data"))
-PCAP_DIR = DATA_DIR / "pcap"
-LABELS_DIR = DATA_DIR / "labels"
 STATE_FILE = DATA_DIR / "state.json"
-LABELS_CSV = LABELS_DIR / "labels.csv"
-LABELS_JSONL = LABELS_DIR / "labels.jsonl"
-SEGMENTS_CSV = LABELS_DIR / "segments.csv"
+LABELS_CSV = DATA_DIR / "labels.csv"
+LABELS_JSONL = DATA_DIR / "labels.jsonl"
+SEGMENTS_CSV = DATA_DIR / "segments.csv"
 
 CSI_CHANSPEC = os.environ.get("CSI_CHANSPEC", "36/80")
 CSI_CORE = os.environ.get("CSI_CORE", "1")
@@ -43,6 +42,38 @@ RCLONE_SYNC_INTERVAL_SEC = int(os.environ.get("RCLONE_SYNC_INTERVAL_SEC", "60"))
 
 PRESENCE_VALUES = {"in_room", "away"}
 WINDOW_VALUES = {"open", "closed"}
+DATE_RE = re.compile(r"csi_(\d{4})(\d{2})(\d{2})_")
+
+LABEL_FIELDS = [
+    "timestamp_iso",
+    "epoch_ms",
+    "date",
+    "presence",
+    "window",
+    "label_class",
+    "memo",
+    "event_type",
+    "segment_id",
+    "relative_path",
+]
+
+SEGMENT_FIELDS = [
+    "segment_id",
+    "date",
+    "relative_path",
+    "filename",
+    "start_iso",
+    "end_iso",
+    "start_epoch_ms",
+    "end_epoch_ms",
+    "duration_sec",
+    "bytes",
+    "presence",
+    "window",
+    "label_class",
+    "memos",
+    "chanspec",
+]
 
 
 def now_local() -> datetime.datetime:
@@ -51,6 +82,18 @@ def now_local() -> datetime.datetime:
 
 def iso_now() -> str:
     return now_local().isoformat(timespec="seconds")
+
+
+def make_label_class(presence: str, window: str) -> str:
+    return f"{presence}__{window}"
+
+
+def infer_date_from_path(path: Path) -> str:
+    m = DATE_RE.search(path.name)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    mtime_dt = datetime.datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+    return mtime_dt.strftime("%Y-%m-%d")
 
 
 def run_cmd(cmd: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
@@ -66,8 +109,7 @@ def run_cmd(cmd: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
 
 class CSILoggerService:
     def __init__(self) -> None:
-        PCAP_DIR.mkdir(parents=True, exist_ok=True)
-        LABELS_DIR.mkdir(parents=True, exist_ok=True)
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         self.lock = threading.RLock()
         self.stop_event = threading.Event()
@@ -77,6 +119,8 @@ class CSILoggerService:
         self.state: Dict[str, Any] = self._load_state()
         self.active_pcap_path: Optional[Path] = None
         self.active_pcap_start: Optional[datetime.datetime] = None
+        self.active_segment_id: str = ""
+        self.active_segment_memos: List[str] = []
         self.capture_proc: Optional[subprocess.Popen] = None
         self.last_chanspec_output: str = ""
         self.capture_status: str = "initializing"
@@ -124,16 +168,34 @@ class CSILoggerService:
         tmp.replace(STATE_FILE)
 
     def _recover_orphan_active_pcaps(self) -> None:
-        """Finalize any leftover .pcap.active files from an abrupt reboot/power loss."""
-        for p in sorted(PCAP_DIR.glob("*.pcap.active")):
-            final_path = Path(str(p)[: -len(".active")])
+        """Finalize leftover .pcap.active files and migrate any legacy DATA_DIR/pcap files into date folders."""
+        candidates: List[Path] = list(DATA_DIR.glob("*/pcap/*.pcap.active"))
+        legacy_dir = DATA_DIR / "pcap"
+        if legacy_dir.exists():
+            candidates.extend(legacy_dir.glob("*.pcap*"))
+
+        for p in sorted(set(candidates)):
             try:
-                if p.stat().st_size > 24:
-                    if final_path.exists():
-                        final_path = PCAP_DIR / f"{final_path.stem}_recovered.pcap"
-                    p.rename(final_path)
-                else:
-                    p.unlink(missing_ok=True)
+                if not p.exists() or not p.is_file():
+                    continue
+                date_str = infer_date_from_path(p)
+                target_pcap_dir = DATA_DIR / date_str / "pcap"
+                target_pcap_dir.mkdir(parents=True, exist_ok=True)
+
+                if p.name.endswith(".pcap.active"):
+                    if p.stat().st_size <= 24:
+                        p.unlink(missing_ok=True)
+                        continue
+                    final_name = p.name[: -len(".active")]
+                    dest = target_pcap_dir / final_name
+                    if dest.exists():
+                        dest = target_pcap_dir / f"{dest.stem}_recovered.pcap"
+                    p.rename(dest)
+                elif p.name.endswith(".pcap") and p.parent == legacy_dir:
+                    dest = target_pcap_dir / p.name
+                    if dest.exists():
+                        dest = target_pcap_dir / f"{dest.stem}_migrated.pcap"
+                    p.rename(dest)
             except Exception:
                 pass
 
@@ -141,34 +203,39 @@ class CSILoggerService:
         now_dt = now_local()
         ts_iso = now_dt.isoformat(timespec="seconds")
         epoch_ms = int(now_dt.timestamp() * 1000)
-        active_name = self.active_pcap_path.name if self.active_pcap_path else ""
+        date_str = now_dt.strftime("%Y-%m-%d")
+        presence = self.state["presence"]
+        window = self.state["window"]
+        label_class = make_label_class(presence, window)
+
+        rel_path = ""
+        if self.active_pcap_path is not None:
+            try:
+                rel_path = self.active_pcap_path.relative_to(DATA_DIR).as_posix()
+            except ValueError:
+                rel_path = self.active_pcap_path.name
 
         row = {
             "timestamp_iso": ts_iso,
             "epoch_ms": epoch_ms,
-            "presence": self.state["presence"],
-            "window": self.state["window"],
+            "date": date_str,
+            "presence": presence,
+            "window": window,
+            "label_class": label_class,
             "memo": memo_text,
             "event_type": event_type,
-            "active_pcap": active_name,
+            "segment_id": self.active_segment_id,
+            "relative_path": rel_path,
         }
 
-        daily_csv = LABELS_DIR / f"labels_{now_dt.strftime('%Y%m%d')}.csv"
+        day_dir = DATA_DIR / date_str
+        day_dir.mkdir(parents=True, exist_ok=True)
+        daily_csv = day_dir / f"labels_{date_str}.csv"
+
         for csv_path in (LABELS_CSV, daily_csv):
             need_header = not csv_path.exists() or csv_path.stat().st_size == 0
             with csv_path.open("a", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(
-                    f,
-                    fieldnames=[
-                        "timestamp_iso",
-                        "epoch_ms",
-                        "presence",
-                        "window",
-                        "memo",
-                        "event_type",
-                        "active_pcap",
-                    ],
-                )
+                writer = csv.DictWriter(f, fieldnames=LABEL_FIELDS)
                 if need_header:
                     writer.writeheader()
                 writer.writerow(row)
@@ -178,42 +245,46 @@ class CSILoggerService:
 
     def _append_segment_record(
         self,
+        segment_id: str,
+        date_str: str,
+        relative_path: str,
         filename: str,
         start_dt: datetime.datetime,
         end_dt: datetime.datetime,
         size_bytes: int,
         presence: str,
         window: str,
+        memos: List[str],
     ) -> None:
-        need_header = not SEGMENTS_CSV.exists() or SEGMENTS_CSV.stat().st_size == 0
-        duration = round((end_dt - start_dt).total_seconds(), 2)
-        with SEGMENTS_CSV.open("a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if need_header:
-                writer.writerow(
-                    [
-                        "filename",
-                        "start_iso",
-                        "end_iso",
-                        "duration_sec",
-                        "bytes",
-                        "presence",
-                        "window",
-                        "chanspec",
-                    ]
-                )
-            writer.writerow(
-                [
-                    filename,
-                    start_dt.isoformat(timespec="seconds"),
-                    end_dt.isoformat(timespec="seconds"),
-                    duration,
-                    size_bytes,
-                    presence,
-                    window,
-                    CSI_CHANSPEC,
-                ]
-            )
+        day_dir = DATA_DIR / date_str
+        day_dir.mkdir(parents=True, exist_ok=True)
+        daily_seg_csv = day_dir / f"segments_{date_str}.csv"
+
+        row = {
+            "segment_id": segment_id,
+            "date": date_str,
+            "relative_path": relative_path,
+            "filename": filename,
+            "start_iso": start_dt.isoformat(timespec="seconds"),
+            "end_iso": end_dt.isoformat(timespec="seconds"),
+            "start_epoch_ms": int(start_dt.timestamp() * 1000),
+            "end_epoch_ms": int(end_dt.timestamp() * 1000),
+            "duration_sec": round((end_dt - start_dt).total_seconds(), 2),
+            "bytes": size_bytes,
+            "presence": presence,
+            "window": window,
+            "label_class": make_label_class(presence, window),
+            "memos": " | ".join(memos),
+            "chanspec": CSI_CHANSPEC,
+        }
+
+        for csv_path in (SEGMENTS_CSV, daily_seg_csv):
+            need_header = not csv_path.exists() or csv_path.stat().st_size == 0
+            with csv_path.open("a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=SEGMENT_FIELDS)
+                if need_header:
+                    writer.writeheader()
+                writer.writerow(row)
 
     def ensure_csi_interface(self) -> bool:
         """Ensure wlan0 and mon0 are up and Nexmon CSI extractor is configured."""
@@ -269,10 +340,17 @@ class CSILoggerService:
             presence = self.state["presence"]
             window = self.state["window"]
             start_dt = now_local()
-            fname = f"csi_{start_dt.strftime('%Y%m%d_%H%M%S')}_{presence}_{window}.pcap.active"
-            path = PCAP_DIR / fname
+            date_str = start_dt.strftime("%Y-%m-%d")
+            segment_id = start_dt.strftime("%Y%m%d_%H%M%S")
+            pcap_dir = DATA_DIR / date_str / "pcap"
+            pcap_dir.mkdir(parents=True, exist_ok=True)
+            fname = f"csi_{segment_id}_{presence}_{window}.pcap.active"
+            path = pcap_dir / fname
+
             self.active_pcap_path = path
             self.active_pcap_start = start_dt
+            self.active_segment_id = segment_id
+            self.active_segment_memos = []
             self.capture_status = "recording"
 
         proc = subprocess.Popen(
@@ -290,6 +368,8 @@ class CSILoggerService:
             proc = self.capture_proc
             path = self.active_pcap_path
             start_dt = self.active_pcap_start
+            segment_id = self.active_segment_id
+            memos = list(self.active_segment_memos)
             self.capture_proc = None
 
         if proc is not None:
@@ -307,16 +387,22 @@ class CSILoggerService:
             if size_bytes > 24:
                 final_path = Path(str(path)[: -len(".active")])
                 if final_path.exists():
-                    final_path = PCAP_DIR / f"{final_path.stem}_{int(time.time())}.pcap"
+                    final_path = path.parent / f"{final_path.stem}_{int(time.time())}.pcap"
                 path.rename(final_path)
                 if start_dt is not None:
+                    date_str = start_dt.strftime("%Y-%m-%d")
+                    rel_path = final_path.relative_to(DATA_DIR).as_posix()
                     self._append_segment_record(
-                        final_path.name,
-                        start_dt,
-                        end_dt,
-                        size_bytes,
-                        seg_presence,
-                        seg_window,
+                        segment_id=segment_id or start_dt.strftime("%Y%m%d_%H%M%S"),
+                        date_str=date_str,
+                        relative_path=rel_path,
+                        filename=final_path.name,
+                        start_dt=start_dt,
+                        end_dt=end_dt,
+                        size_bytes=size_bytes,
+                        presence=seg_presence,
+                        window=seg_window,
+                        memos=memos,
                     )
             else:
                 path.unlink(missing_ok=True)
@@ -324,6 +410,8 @@ class CSILoggerService:
         with self.lock:
             self.active_pcap_path = None
             self.active_pcap_start = None
+            self.active_segment_id = ""
+            self.active_segment_memos = []
 
     def capture_loop(self) -> None:
         iface_ready = False
@@ -422,21 +510,27 @@ class CSILoggerService:
             self.sync_status["syncing"] = True
 
         try:
-            res_labels = run_cmd(
+            res_csv = run_cmd(
                 [
                     "rclone",
                     "--config",
                     RCLONE_CONFIG,
                     "copy",
-                    str(LABELS_DIR),
-                    f"{RCLONE_REMOTE}/labels",
+                    str(DATA_DIR),
+                    RCLONE_REMOTE,
+                    "--include",
+                    "*.csv",
+                    "--include",
+                    "*.jsonl",
+                    "--exclude",
+                    "*.pcap*",
                 ],
                 timeout=120,
             )
-            if res_labels.returncode != 0:
-                raise RuntimeError(f"labels copy failed: {res_labels.stderr.strip()}")
+            if res_csv.returncode != 0:
+                raise RuntimeError(f"csv copy failed: {res_csv.stderr.strip()}")
 
-            pending_before = list(PCAP_DIR.glob("*.pcap"))
+            pending_before = list(DATA_DIR.glob("*/pcap/*.pcap"))
             if pending_before:
                 res_move = run_cmd(
                     [
@@ -444,16 +538,18 @@ class CSILoggerService:
                         "--config",
                         RCLONE_CONFIG,
                         "move",
-                        str(PCAP_DIR),
-                        f"{RCLONE_REMOTE}/pcap",
+                        str(DATA_DIR),
+                        RCLONE_REMOTE,
                         "--include",
-                        "*.pcap",
+                        "*/pcap/*.pcap",
+                        "--exclude",
+                        "*.pcap.active",
                     ],
                     timeout=300,
                 )
                 if res_move.returncode != 0:
                     raise RuntimeError(f"pcap move failed: {res_move.stderr.strip()}")
-            pending_after = list(PCAP_DIR.glob("*.pcap"))
+            pending_after = list(DATA_DIR.glob("*/pcap/*.pcap"))
             moved_count = max(0, len(pending_before) - len(pending_after))
 
             with self.lock:
@@ -501,6 +597,8 @@ class CSILoggerService:
             if "memo" in payload and memo_text:
                 self.state["memo"] = memo_text
                 event_parts.append("memo")
+                if not changed_label:
+                    self.active_segment_memos.append(memo_text)
 
             if "capture_enabled" in payload and isinstance(payload["capture_enabled"], bool):
                 if payload["capture_enabled"] != self.state["capture_enabled"]:
@@ -543,8 +641,13 @@ class CSILoggerService:
             active_info = None
             if self.active_pcap_path is not None:
                 size = self.active_pcap_path.stat().st_size if self.active_pcap_path.exists() else 0
+                try:
+                    rel = self.active_pcap_path.relative_to(DATA_DIR).as_posix()
+                except ValueError:
+                    rel = self.active_pcap_path.name
                 active_info = {
                     "filename": self.active_pcap_path.name,
+                    "relative_path": rel,
                     "bytes": size,
                     "started_at": (
                         self.active_pcap_start.isoformat(timespec="seconds")
@@ -553,11 +656,13 @@ class CSILoggerService:
                     ),
                 }
 
-            pending_pcaps = sorted(p.name for p in PCAP_DIR.glob("*.pcap"))
+            pending_pcaps = sorted(p.name for p in DATA_DIR.glob("*/pcap/*.pcap"))
             usage = shutil.disk_usage(DATA_DIR)
+            state_copy = dict(self.state)
+            state_copy["label_class"] = make_label_class(state_copy["presence"], state_copy["window"])
 
             return {
-                "state": dict(self.state),
+                "state": state_copy,
                 "capture": {
                     "status": self.capture_status,
                     "error": self.capture_error,
@@ -681,7 +786,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .ctrl-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
   .kv { font-size: 0.85rem; color: var(--muted); display: grid; gap: 4px; }
-  .kv b { color: var(--text); }
+  .kv b { color: var(--text); word-break: break-all; }
   table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
   th, td {
     text-align: left; padding: 6px 4px;
@@ -738,7 +843,7 @@ HTML_PAGE = """<!DOCTYPE html>
   <div class="card">
     <h2>CSI キャプチャ &amp; Google Drive 同期</h2>
     <div class="kv">
-      <div>現在の状態更新: <b id="st-updated">-</b></div>
+      <div>現在のクラス / 更新時刻: <b id="st-class">-</b> (<b id="st-updated">-</b>)</div>
       <div>Chanspec: <b id="st-chan">-</b></div>
       <div>記録中ファイル: <b id="st-active">-</b></div>
       <div>Google Drive: <b id="st-sync">-</b></div>
@@ -800,10 +905,11 @@ function render(data) {
   }
 
   document.getElementById('btn-toggle-cap').textContent = currentCapEnabled ? '⏸ 一時停止' : '▶ 記録再開';
+  document.getElementById('st-class').textContent = s.label_class || '-';
   document.getElementById('st-updated').textContent = s.updated_at || '-';
   document.getElementById('st-chan').textContent = c.chanspec || '-';
   document.getElementById('st-active').textContent = c.active_pcap
-    ? `${c.active_pcap.filename} (${fmtBytes(c.active_pcap.bytes)})`
+    ? `${c.active_pcap.relative_path || c.active_pcap.filename} (${fmtBytes(c.active_pcap.bytes)})`
     : (c.error || 'なし');
 
   const syncText = sy.rclone_configured
