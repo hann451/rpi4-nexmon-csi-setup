@@ -1,0 +1,8 @@
+# OS images and archives
+*.img
+*.img.gz
+*.zip
+*.xz
+
+# Secrets (keep only the .example template)
+wpa_supplicant.conf

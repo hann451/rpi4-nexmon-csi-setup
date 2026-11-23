@@ -1,0 +1,23 @@
+[Unit]
+Description=Nexmon CSI Logger, Google Drive Sync, and Label Web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/csi-logger
+Environment=PYTHONUNBUFFERED=1
+Environment=CSI_CHANSPEC=36/80
+Environment=CSI_CORE=1
+Environment=CSI_NSS=1
+Environment=CSI_ROTATE_SEC=300
+Environment=CSI_PORT=8080
+Environment=RCLONE_REMOTE=gdrive:rpi4_nexmon_csi
+Environment=RCLONE_CONFIG=/home/pi/.config/rclone/rclone.conf
+ExecStart=/usr/bin/python3 /opt/csi-logger/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

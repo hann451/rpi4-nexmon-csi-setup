@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Raspberry Pi 4B × Nexmon CSI 構築・仕組み完全図解ガイド</title>
+<style>
+  :root {
+    --bg: #0b1120;
+    --surface: #111827;
+    --card: #1e293b;
+    --card-2: #0f172a;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --blue: #38bdf8;
+    --indigo: #818cf8;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+    --purple: #c084fc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    line-height: 1.65;
+  }
+  .container {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 24px 18px 64px;
+  }
+  header.hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #0f172a 100%);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px 24px;
+    margin-bottom: 24px;
+  }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .pill {
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+    background: rgba(56,189,248,0.14); color: var(--blue); border: 1px solid rgba(56,189,248,0.35);
+  }
+  .pill.green { background: rgba(52,211,153,0.14); color: var(--green); border-color: rgba(52,211,153,0.35); }
+  .pill.purple { background: rgba(192,132,252,0.14); color: var(--purple); border-color: rgba(192,132,252,0.35); }
+  h1 { margin: 0 0 8px; font-size: 1.75rem; line-height: 1.3; }
+  .subtitle { margin: 0; color: var(--muted); font-size: 0.96rem; }
+
+  nav.tabs {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 22px;
+    position: sticky; top: 8px; z-index: 20;
+    background: rgba(11,17,32,0.92); backdrop-filter: blur(8px);
+    padding: 8px; border-radius: 12px; border: 1px solid var(--border);
+  }
+  nav.tabs button {
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    padding: 8px 14px; border-radius: 9px; font-weight: 700; font-size: 13px;
+    cursor: pointer; transition: all 0.15s ease;
+  }
+  nav.tabs button.active, nav.tabs button:hover {
+    color: var(--text); border-color: var(--blue); background: rgba(56,189,248,0.15);
+  }
+
+  section.panel { display: none; }
+  section.panel.active { display: block; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px; margin-bottom: 18px;
+  }
+  h2 { margin: 0 0 10px; font-size: 1.25rem; color: var(--blue); }
+  h3 { margin: 14px 0 8px; font-size: 1.02rem; color: var(--text); }
+  p { margin: 0 0 10px; font-size: 0.94rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: rgba(15,23,42,0.85); color: #e2e8f0;
+    padding: 2px 6px; border-radius: 6px; font-size: 0.86em;
+    border: 1px solid rgba(51,65,85,0.8);
+  }
+  pre {
+    background: #020617; border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; overflow-x: auto; font-size: 12.5px; line-height: 1.5;
+    margin: 10px 0;
+  }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+
+  .sim-controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    margin-bottom: 14px; padding: 12px; background: var(--card-2);
+    border: 1px solid var(--border); border-radius: 12px;
+  }
+  .btn-toggle {
+    padding: 8px 14px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-weight: 700; cursor: pointer;
+    font-size: 13px;
+  }
+  .btn-toggle.on-green { background: rgba(52,211,153,0.18); border-color: var(--green); color: var(--green); }
+  .btn-toggle.on-blue { background: rgba(56,189,248,0.18); border-color: var(--blue); color: var(--blue); }
+  .btn-toggle.on-amber { background: rgba(251,191,36,0.18); border-color: var(--amber); color: var(--amber); }
+
+  canvas#csiCanvas {
+    width: 100%; height: 260px; display: block;
+    background: #020617; border: 1px solid var(--border); border-radius: 12px;
+  }
+
+  .packet-bar {
+    display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px;
+    margin: 12px 0; padding: 8px; background: #020617; border-radius: 12px; border: 1px solid var(--border);
+  }
+  .pkt-seg {
+    padding: 10px 8px; border-radius: 8px; text-align: center; cursor: pointer;
+    border: 1px solid transparent; transition: transform 0.1s ease;
+    min-width: 78px;
+  }
+  .pkt-seg:hover { transform: translateY(-2px); border-color: #fff; }
+  .pkt-seg small { display: block; font-size: 11px; opacity: 0.85; }
+  .pkt-seg strong { display: block; font-size: 12.5px; }
+  .seg-hdr { background: rgba(129,140,248,0.22); color: #c7d2fe; border-color: rgba(129,140,248,0.45); }
+  .seg-csi { background: rgba(52,211,153,0.22); color: #a7f3d0; border-color: rgba(52,211,153,0.45); flex: 1; min-width: 240px; }
+  .pkt-detail {
+    padding: 12px 14px; border-radius: 10px; background: var(--card-2);
+    border: 1px solid var(--border); font-size: 13.5px;
+  }
+
+  .hurdle {
+    border-left: 4px solid var(--amber);
+    background: var(--card-2); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  .hurdle.solved { border-left-color: var(--green); }
+  .hurdle .tag {
+    display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px;
+    border-radius: 999px; margin-bottom: 6px;
+    background: rgba(251,191,36,0.16); color: var(--amber);
+  }
+  .hurdle.solved .tag { background: rgba(52,211,153,0.16); color: var(--green); }
+
+  svg.diagram { width: 100%; height: auto; display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="hero">
+    <div class="pill-row">
+      <span class="pill">Raspberry Pi 4B (USB Boot)</span>
+      <span class="pill green">Kernel 5.10.92-v7l+ Fixed</span>
+      <span class="pill purple">Nexmon CSI 80MHz (256 Subcarriers)</span>
+    </div>
+    <h1>Raspberry Pi 4B × Nexmon CSI 構築・仕組み完全図解ガイド</h1>
+    <p class="subtitle">今回構築した「Wi-Fi CSI 常時取得 → Google Drive (5TB) 自動保管 → Tailscale スマホ記録Web UI」の全体像、パケットの中身、そしてハマりポイントの解決理由をインタラクティブに理解するための教材です。</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="active" onclick="showTab('tab1', this)">1. Wi-Fi CSI と 1042B パケット</button>
+    <button onclick="showTab('tab2', this)">2. 3層アーキテクチャと難所解説</button>
+    <button onclick="showTab('tab3', this)">3. 自動記録・Drive・Tailscale 構成図</button>
+    <button onclick="showTab('tab4', this)">4. データ形式と運用リファレンス</button>
+  </nav>
+
+  <!-- TAB 1 -->
+  <section id="tab1" class="panel active">
+    <div class="card">
+      <h2>なぜ通常の Wi-Fi では見えず、Nexmon CSI だと「在室」や「窓の開閉」が分かるのか？</h2>
+      <p>通常の Wi-Fi（RSSI）は <strong>256本の電波（サブキャリア）を全部平均した「1個の強さ」</strong> しか見ません。そのため、部屋の隅で人が動いたり窓が開いたりして一部の周波数だけ反射が変わっても、平均値に埋もれてしまいます。</p>
+      <p><strong>Nexmon CSI（Channel State Information）</strong> は、Wi-Fi チップのファームウェア内部から <strong>256本（80MHz幅）すべての複素振幅（振幅 + 位相）</strong> を取り出します。下のシミュレータで状態を切り替えて違いを体感してみてください。</p>
+
+      <div class="sim-controls">
+        <span><strong>在室状態:</strong></span>
+        <button id="sim-in" class="btn-toggle on-green" onclick="setSim('presence','in_room')">🟢 部屋にいる (in_room)</button>
+        <button id="sim-away" class="btn-toggle" onclick="setSim('presence','away')">⚪ 部屋にいない (away)</button>
+        <span style="margin-left:8px;"><strong>窓の状態:</strong></span>
+        <button id="sim-closed" class="btn-toggle on-amber" onclick="setSim('window','closed')">🟣 窓：閉 (closed)</button>
+        <button id="sim-open" class="btn-toggle" onclick="setSim('window','open')">🔵 窓：開 (open)</button>
+      </div>
+
+      <canvas id="csiCanvas" width="960" height="260"></canvas>
+      <div id="sim-caption" style="margin-top:8px; font-size:13px; color:var(--muted);"></div>
+    </div>
+
+    <div class="card">
+      <h2>今回実際に受信した「UDP length 1042」パケットの構造</h2>
+      <p>検証時に <code>tcpdump -i wlan0 dst port 5500</code> で確認した <code>10.10.10.10.5500 &gt; 255.255.255.255.5500: UDP, length 1042</code> は、1フレーム分の CSI データです。各ブロックをクリックすると詳細が表示されます。</p>
+
+      <div class="packet-bar">
+        <div class="pkt-seg seg-hdr" onclick="showPkt(0)"><strong>Magic</strong><small>2 bytes (0x1111)</small></div>
+        <div class="pkt-seg seg-hdr" onclick="showPkt(1)"><strong>RSSI / FC</strong><small>2 bytes</small></div>
+        <div class="pkt-seg seg-hdr" onclick="showPkt(2)"><strong>Src MAC</strong><small>6 bytes</small></div>
+        <div class="pkt-seg seg-hdr" onclick="showPkt(3)"><strong>Seq / Core</strong><small>4 bytes</small></div>
+        <div class="pkt-seg seg-hdr" onclick="showPkt(4)"><strong>Chanspec</strong><small>2 bytes (0xe02a)</small></div>
+        <div class="pkt-seg seg-hdr" onclick="showPkt(5)"><strong>Chip Ver</strong><small>2 bytes</small></div>
+        <div class="pkt-seg seg-csi" onclick="showPkt(6)"><strong>CSI Payload: 256 サブキャリア × 4 bytes (I: int16, Q: int16)</strong><small>1024 bytes（合計 18 + 1024 = 1042 bytes）</small></div>
+      </div>
+      <div id="pkt-detail" class="pkt-detail">上のパケットブロックをクリックすると、各フィールドの意味が表示されます。</div>
+    </div>
+  </section>
+
+  <!-- TAB 2 -->
+  <section id="tab2" class="panel">
+    <div class="card">
+      <h2>Raspberry Pi 4B × Nexmon CSI の3層アーキテクチャ</h2>
+      <p>Nexmon CSI は通常のアプリではなく、<strong>① Wi-Fi チップ内部のファームウェア → ② Linux カーネルドライバ → ③ ユーザー空間のコマンド群</strong> の3層がすべて噛み合って初めて動きます。</p>
+
+      <svg class="diagram" viewBox="0 0 920 340" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#38bdf8" />
+          </marker>
+        </defs>
+        <!-- Layer 3: User space -->
+        <rect x="20" y="15" width="880" height="90" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="38" y="40" fill="#38bdf8" font-size="13" font-weight="bold">③ ユーザー空間 (User Space / Python 3 &amp; CLI)</text>
+        <rect x="40" y="52" width="190" height="40" rx="8" fill="#1e293b" stroke="#475569"/>
+        <text x="135" y="76" fill="#f8fafc" font-size="12" text-anchor="middle">makecsiparams (-c 36/80)</text>
+        <rect x="260" y="52" width="190" height="40" rx="8" fill="#1e293b" stroke="#475569"/>
+        <text x="355" y="76" fill="#f8fafc" font-size="12" text-anchor="middle">nexutil -Iwlan0 -s500</text>
+        <rect x="480" y="52" width="180" height="40" rx="8" fill="#1e293b" stroke="#475569"/>
+        <text x="570" y="76" fill="#f8fafc" font-size="12" text-anchor="middle">iw (mon0 monitor UP)</text>
+        <rect x="690" y="52" width="190" height="40" rx="8" fill="#064e3b" stroke="#34d399"/>
+        <text x="785" y="76" fill="#a7f3d0" font-size="12" text-anchor="middle">tcpdump -i wlan0 port 5500</text>
+        <line x1="230" y1="72" x2="255" y2="72" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- Layer 2: Kernel -->
+        <rect x="20" y="125" width="880" height="90" rx="12" fill="#0f172a" stroke="#818cf8" stroke-width="1.5"/>
+        <text x="38" y="150" fill="#818cf8" font-size="13" font-weight="bold">② Linux カーネル層 (5.10.92-v7l+ / hold 固定済み)</text>
+        <rect x="40" y="162" width="380" height="40" rx="8" fill="#1e293b" stroke="#818cf8"/>
+        <text x="230" y="186" fill="#e0e7ff" font-size="12" text-anchor="middle">改変版ドライバ brcmfmac.ko (/lib/modules/... + depmod -a)</text>
+        <rect x="450" y="162" width="430" height="40" rx="8" fill="#1e293b" stroke="#475569"/>
+        <text x="665" y="186" fill="#cbd5e1" font-size="12" text-anchor="middle">mon0 がチップをモニターモード化 → UDP:5500 パケットを wlan0 へ流す</text>
+
+        <!-- Layer 1: Firmware -->
+        <rect x="20" y="235" width="880" height="90" rx="12" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+        <text x="38" y="260" fill="#34d399" font-size="13" font-weight="bold">① Wi-Fi チップ BCM43455c0 内部ファームウェア層</text>
+        <rect x="40" y="272" width="520" height="40" rx="8" fill="#1e293b" stroke="#34d399"/>
+        <text x="300" y="296" fill="#a7f3d0" font-size="12" text-anchor="middle">パッチ適用済み brcmfmac43455-sdio.bin (7.45.189 / nexmon.org/csi)</text>
+        <rect x="590" y="272" width="290" height="40" rx="8" fill="#1e293b" stroke="#475569"/>
+        <text x="735" y="296" fill="#cbd5e1" font-size="12" text-anchor="middle">Ch 36 / 80MHz の電波から CSI 抽出</text>
+
+        <!-- Vertical connections -->
+        <line x1="355" y1="95" x2="355" y2="157" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+        <line x1="230" y1="205" x2="230" y2="267" stroke="#818cf8" stroke-width="2" marker-end="url(#arrow)"/>
+        <line x1="785" y1="267" x2="785" y2="99" stroke="#34d399" stroke-width="2" marker-end="url(#arrow)"/>
+      </svg>
+    </div>
+
+    <div class="card">
+      <h2>今回の構築で遭遇した5つの難所と、解決した理由</h2>
+
+      <div class="hurdle solved">
+        <span class="tag">難所 1：パッチバージョンの罠</span>
+        <h3><code>7_45_206</code> でビルドエラー → <code>7_45_189</code> が正解だった</h3>
+        <p>Pi の初期ファームウェアは <code>7.45.241</code> でしたが、最新の <code>nexmon_csi</code> は <strong><code>7_45_189</code> 用バイナリをベースにパッチを生成して置き換える方式</strong> になっていました（<code>7_45_206</code> には <code>version.c</code> 用シンボルの不一致があり失敗）。また <code>Makefile.rpi</code> は Debian Bookworm（NetworkManager + <code>brcmfmac_cyw</code>）向けだったため、Bullseye 5.10 では従来 <code>Makefile</code> が必要でした。</p>
+      </div>
+
+      <div class="hurdle solved">
+        <span class="tag">難所 2：カーネルヘッダのバージョン不一致</span>
+        <h3><code>apt install raspberrypi-kernel-headers</code> が拒否された → pool から <code>1.20220120-1</code> を直接取得</h3>
+        <p>実行中のカーネルは <code>5.10.92-v7l+</code>（<code>1:1.20220120-1</code>）でしたが、<code>apt</code> リポジトリ上の最新ヘッダは別バージョン（<code>1:1.20230405-1</code>）に更新済みでした。もし <code>hold</code> せず入れていたらカーネルモジュールがビルドできなくなるところでした。<code>archive.raspberrypi.org/debian/pool/...</code> から完全一致版の <code>.deb</code> を落として <code>dpkg -i</code> で入れ、再度 <code>apt-mark hold</code> したことで解決しました。</p>
+      </div>
+
+      <div class="hurdle solved">
+        <span class="tag">難所 3：Bullseye の Python 3 化</span>
+        <h3><code>b43-beautifier</code> が <code>SyntaxError</code> → <code>python2</code> 導入と shebang 置換</h3>
+        <p>マイクロコード逆アセンブラ <code>b43-beautifier</code> は Python 2 の <code>print "..."</code> 構文で書かれていますが、Bullseye の <code>/usr/bin/python</code> は Python 3.9 を指していました。<code>python2</code> をインストールし、<code>~/nexmon/buildtools/</code> 内の <code>#!/usr/bin/env python</code> を <code>python2</code> へ書き換えて解決しました。</p>
+      </div>
+
+      <div class="hurdle solved">
+        <span class="tag">難所 4：<code>wlan0</code> 自動ダウンと再起動時の消失</span>
+        <h3><code>dhcpcd</code> が <code>wlan0</code> を落とす / <code>make install-firmware</code> は一時的な <code>insmod</code> のみ</h3>
+        <p>① <code>wpa_supplicant</code> を止めると <code>dhcpcd</code> が検知して <code>wlan0</code> を <code>DOWN</code> にしてしまうため、<code>/etc/dhcpcd.conf</code> に <code>denyinterfaces wlan0 mon0</code> を追加しました。② <code>make install-firmware</code> は再起動すると元の <code>brcmfmac.ko</code> に戻るため、<code>/lib/modules/5.10.92-v7l+/.../brcmfmac.ko</code> を上書きして <code>depmod -a</code> で永続化しました。</p>
+      </div>
+
+      <div class="hurdle solved">
+        <span class="tag">難所 5：再起動後の <code>169.254.x.x</code> と Tailscale の <code>nftables</code></span>
+        <h3>DHCP タイムアウトでネット不通 → 有線 <code>eth0</code> を固定 IP 化し、<code>iptables-legacy</code> に切替</h3>
+        <p>再起動時にルーターの DHCP 応答が間に合わず <code>eth0</code> がリンクローカル（<code>169.254.181.195</code>）になり Tailscale がインターネットに出られませんでした。<code>/etc/dhcpcd.conf</code> で <code>eth0</code> を <code>192.168.10.2/24</code>（GW <code>192.168.10.1</code>）に固定し、カーネル 5.10 と相性の良い <code>iptables-legacy</code> に切り替えたことで、再起動後も <code>100.68.123.109</code> で即オンラインになります。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3 -->
+  <section id="tab3" class="panel">
+    <div class="card">
+      <h2>常時記録・スマホWeb UI・Tailscale・Google Drive (5TB) 自動同期の全体図</h2>
+      <p>Pi の電源が入っている間、<code>csi-logger.service</code>（<code>/opt/csi-logger/app.py</code>）が以下のパイプラインを自動で回し続けます。</p>
+
+      <svg class="diagram" viewBox="0 0 920 330" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#34d399" />
+          </marker>
+          <marker id="arr3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#c084fc" />
+          </marker>
+        </defs>
+
+        <!-- Smartphone -->
+        <rect x="20" y="25" width="210" height="110" rx="12" fill="#0f172a" stroke="#c084fc" stroke-width="1.5"/>
+        <text x="125" y="52" fill="#c084fc" font-size="13" font-weight="bold" text-anchor="middle">📱 スマホ / PC ブラウザ</text>
+        <text x="125" y="75" fill="#e2e8f0" font-size="11.5" text-anchor="middle">在室 (in_room / away)</text>
+        <text x="125" y="95" fill="#e2e8f0" font-size="11.5" text-anchor="middle">窓 (open / closed) + メモ</text>
+        <text x="125" y="118" fill="#94a3b8" font-size="11" text-anchor="middle">http://100.68.123.109:8080</text>
+
+        <!-- Tailscale Tunnel -->
+        <rect x="260" y="50" width="120" height="58" rx="10" fill="#1e1b4b" stroke="#818cf8"/>
+        <text x="320" y="76" fill="#c7d2fe" font-size="12" font-weight="bold" text-anchor="middle">Tailscale VPN</text>
+        <text x="320" y="94" fill="#94a3b8" font-size="10.5" text-anchor="middle">外出先からも安全接続</text>
+
+        <line x1="230" y1="79" x2="255" y2="79" stroke="#c084fc" stroke-width="2" marker-end="url(#arr3)"/>
+        <line x1="380" y1="79" x2="415" y2="79" stroke="#c084fc" stroke-width="2" marker-end="url(#arr3)"/>
+
+        <!-- RPi csi-logger -->
+        <rect x="420" y="18" width="245" height="290" rx="14" fill="#0f172a" stroke="#38bdf8" stroke-width="1.8"/>
+        <text x="542" y="42" fill="#38bdf8" font-size="13" font-weight="bold" text-anchor="middle">🍓 Raspberry Pi 4B (systemd)</text>
+        <rect x="438" y="56" width="209" height="50" rx="8" fill="#1e293b" stroke="#c084fc"/>
+        <text x="542" y="78" fill="#f8fafc" font-size="12" text-anchor="middle">Web UI サーバー (:8080)</text>
+        <text x="542" y="96" fill="#94a3b8" font-size="10.5" text-anchor="middle">state.json &amp; labels.csv 更新</text>
+
+        <rect x="438" y="122" width="209" height="72" rx="8" fill="#1e293b" stroke="#34d399"/>
+        <text x="542" y="144" fill="#a7f3d0" font-size="12" font-weight="bold" text-anchor="middle">tcpdump 5分ローテーション</text>
+        <text x="542" y="162" fill="#cbd5e1" font-size="10.5" text-anchor="middle">記録中: *.pcap.active</text>
+        <text x="542" y="180" fill="#cbd5e1" font-size="10.5" text-anchor="middle">状態変化 or 5分で *.pcap 確定</text>
+
+        <rect x="438" y="210" width="209" height="78" rx="8" fill="#1e293b" stroke="#fbbf24"/>
+        <text x="542" y="232" fill="#fde68a" font-size="12" font-weight="bold" text-anchor="middle">rclone 自動同期ワーカー (60s)</text>
+        <text x="542" y="250" fill="#cbd5e1" font-size="10.5" text-anchor="middle">labels → copy (両方に残す)</text>
+        <text x="542" y="268" fill="#cbd5e1" font-size="10.5" text-anchor="middle">*.pcap → move (転送後Piから削除)</text>
+
+        <!-- Local USB protection -->
+        <rect x="20" y="180" width="360" height="120" rx="12" fill="#0f172a" stroke="#475569"/>
+        <text x="200" y="206" fill="#f8fafc" font-size="12.5" font-weight="bold" text-anchor="middle">💾 Pi側 USBストレージ保護</text>
+        <text x="200" y="230" fill="#94a3b8" font-size="11.5" text-anchor="middle">• 1時間あたり約 600〜700 MB の .pcap が生成</text>
+        <text x="200" y="252" fill="#94a3b8" font-size="11.5" text-anchor="middle">• rclone move により完了ファイルは自動で掃除</text>
+        <text x="200" y="274" fill="#fbbf24" font-size="11.5" text-anchor="middle">• 空き 2.0 GB 未満になったら安全のため一時停止</text>
+
+        <!-- Google Drive -->
+        <rect x="705" y="95" width="195" height="165" rx="14" fill="#064e3b" stroke="#34d399" stroke-width="1.8"/>
+        <text x="802" y="126" fill="#a7f3d0" font-size="14" font-weight="bold" text-anchor="middle">☁ Google Drive (5TB)</text>
+        <text x="802" y="152" fill="#ecfdf5" font-size="12" text-anchor="middle">gdrive:rpi4_nexmon_csi/</text>
+        <text x="802" y="182" fill="#d1fae5" font-size="11.5" text-anchor="middle">📁 pcap/ (*.pcap)</text>
+        <text x="802" y="204" fill="#d1fae5" font-size="11.5" text-anchor="middle">📁 labels/ (labels.csv等)</text>
+        <text x="802" y="236" fill="#6ee7b7" font-size="10.5" text-anchor="middle">SSHポート転送でヘッドレス認証済</text>
+
+        <line x1="665" y1="248" x2="700" y2="190" stroke="#34d399" stroke-width="2.2" marker-end="url(#arr2)"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- TAB 4 -->
+  <section id="tab4" class="panel">
+    <div class="card">
+      <h2>保存されるファイル形式と、今後の機械学習・信号処理での使い方</h2>
+      <table>
+        <thead>
+          <tr><th>保存先（Google Drive / Pi）</th><th>ファイル</th><th>用途・中身のポイント</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>pcap/</code></td>
+            <td><code>csi_20261123_225018_in_room_closed.pcap</code></td>
+            <td>5分またはラベル切替ごとに分割された生 CSI パケット。ファイル名自体に「開始時刻・在室・窓開閉」が入っています。</td>
+          </tr>
+          <tr>
+            <td><code>labels/</code></td>
+            <td><code>labels.csv</code> / <code>labels_YYYYMMDD.csv</code> / <code>labels.jsonl</code></td>
+            <td>スマホ画面でボタンを押した正確な時刻（ISO時刻 &amp; Unix epoch ms）と、その時の状態・メモ・記録中 `.pcap` 名の履歴。</td>
+          </tr>
+          <tr>
+            <td><code>labels/</code></td>
+            <td><code>segments.csv</code></td>
+            <td>完了した各 `.pcap` ファイルの開始時刻・終了時刻・秒数・サイズ・状態の対応表。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>よく使う運用コマンド（Pi の SSH）</h3>
+      <pre># サービスの状態とログ確認
+sudo systemctl status csi-logger --no-pager
+sudo journalctl -u csi-logger -n 30 --no-pager
+
+# Google Drive 内の保存ファイル確認
+rclone lsd gdrive:rpi4_nexmon_csi
+rclone size gdrive:rpi4_nexmon_csi/pcap
+
+# Tailscale IP と接続先 URL の確認
+tailscale ip -4</pre>
+    </div>
+  </section>
+</div>
+
+<script>
+function showTab(id, btn) {
+  document.querySelectorAll('section.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'tab1') drawCSI();
+}
+
+const simState = { presence: 'in_room', window: 'closed' };
+function setSim(key, val) {
+  simState[key] = val;
+  document.getElementById('sim-in').className = 'btn-toggle ' + (simState.presence === 'in_room' ? 'on-green' : '');
+  document.getElementById('sim-away').className = 'btn-toggle ' + (simState.presence === 'away' ? 'on-amber' : '');
+  document.getElementById('sim-closed').className = 'btn-toggle ' + (simState.window === 'closed' ? 'on-amber' : '');
+  document.getElementById('sim-open').className = 'btn-toggle ' + (simState.window === 'open' ? 'on-blue' : '');
+  drawCSI();
+}
+
+function drawCSI() {
+  const canvas = document.getElementById('csiCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  for (let y = 40; y < H - 30; y += 45) {
+    ctx.beginPath(); ctx.moveTo(45, y); ctx.lineTo(W - 15, y); ctx.stroke();
+  }
+
+  const N = 256;
+  const amps = [];
+  let sum = 0;
+  for (let i = 0; i < N; i++) {
+    const k = i - 128;
+    // Null/guard carriers near DC (-1..+1) and edges (-128..-123, +123..+127)
+    if (Math.abs(k) <= 1 || Math.abs(k) >= 123) {
+      amps.push(0);
+      continue;
+    }
+    let val = 18 + 6 * Math.sin(i * 0.09) + 3 * Math.cos(i * 0.21);
+    if (simState.window === 'open') {
+      val += 5 * Math.sin(i * 0.16 + 1.1) - 3.5 * Math.cos(i * 0.05);
+    }
+    if (simState.presence === 'in_room') {
+      val += 7 * Math.sin(i * 0.29 + 0.7) + 4 * Math.cos(i * 0.43);
+    }
+    val = Math.max(2, val);
+    amps.push(val);
+    sum += val;
+  }
+  const avg = sum / N;
+
+  // Draw RSSI-like average line
+  const avgY = H - 30 - (avg / 40) * (H - 65);
+  ctx.strokeStyle = '#fbbf24';
+  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(45, avgY); ctx.lineTo(W - 15, avgY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw 256 subcarrier CSI curve
+  ctx.strokeStyle = simState.presence === 'in_room' ? '#34d399' : '#38bdf8';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const x = 45 + (i / (N - 1)) * (W - 60);
+    const y = H - 30 - (amps[i] / 40) * (H - 65);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('振幅', 10, 26);
+  ctx.fillText('サブキャリア -128', 45, H - 10);
+  ctx.fillText('0 (DCヌル)', W / 2 - 25, H - 10);
+  ctx.fillText('+127 (80MHz幅)', W - 115, H - 10);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText(`RSSI的な平均値: ${avg.toFixed(1)}`, 56, avgY - 8);
+
+  const cap = document.getElementById('sim-caption');
+  cap.innerHTML = `現在のシミュレーション: <strong>${simState.presence === 'in_room' ? '🟢 在室' : '⚪ 不在'}</strong> / <strong>${simState.window === 'open' ? '🔵 窓：開' : '🟣 窓：閉'}</strong> — 黄色点線（平均＝RSSI）はほぼ同じ値でも、256本それぞれの凹凸（マルチパス干渉パターン）が大きく変化するため AI/信号処理 で判別できます。（中央の落ち込みは 80MHz Wi-Fi 規格上の DC ヌルサブキャリアです）`;
+}
+
+const pktNotes = [
+  '<strong>Magic (2B)</strong>: <code>0x1111</code> 固定値。この UDP パケットが Nexmon CSI データであることを識別します。',
+  '<strong>RSSI (1B) + Frame Control (1B)</strong>: 受信信号強度と Wi-Fi フレーム種別（Beacon, Data 等）が入ります。',
+  '<strong>Source MAC (6B)</strong>: 電波を送信した相手端末（ルーターや中継器、スマホ等）の MAC アドレス。<code>makecsiparams -m</code> で特定端末だけに絞ることも可能です。',
+  '<strong>Sequence (2B) + Core/Spatial Stream (2B)</strong>: Wi-Fi フレームのシーケンス番号と、受信アンテナコア/ストリーム番号（今回は <code>-C 1 -N 1</code>）。',
+  '<strong>Chanspec (2B)</strong>: 今回 <code>nexutil -Iwlan0 -k</code> で確認した <code>0xe02a</code>（5GHz Channel 36 / 80MHz 幅）がそのまま格納されます。',
+  '<strong>Chip Version (2B)</strong>: Broadcom チップの識別情報。解析スクリプト側で BCM43455c0（int16 × 2形式）としてデコードする目安になります。',
+  '<strong>CSI Payload (1024B)</strong>: 256本のサブキャリア各々について、実部 <code>I (int16, 2B)</code> と虚部 <code>Q (int16, 2B)</code> の複素数が入っています。振幅は √(I²+Q²)、位相は atan2(Q, I) で計算します。'
+];
+function showPkt(idx) {
+  document.getElementById('pkt-detail').innerHTML = pktNotes[idx];
+}
+
+drawCSI();
+</script>
+</body>
+</html>
