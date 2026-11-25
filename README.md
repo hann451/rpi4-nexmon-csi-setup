@@ -1,6 +1,11 @@
 # Raspberry Pi 4B セットアップ手順（Nexmon CSI 用・USBブート）
 
-Wi-Fi CSI 取得実験（Nexmon CSI）のため、カーネル 5.10 系を維持した Raspberry Pi OS (Bullseye) の初期セットアップ手順です。
+Wi-Fi CSI 取得実験（Nexmon CSI）のため、カーネル 5.10 系を維持した Raspberry Pi OS (Bullseye) のセットアップ〜24時間自動記録〜Google Drive (5TB) 整理〜Google Colab 解析までの一式です。
+
+### まずはこちら（図解教材 ＆ Colab ノートブック）
+- 🌱 **超やさしい全体図＆用語辞典**: [`docs/beginner_guide.html`](docs/beginner_guide.html)（専門用語ゼロから全体構成・登場人物・19用語を図解）
+- 🔬 **技術詳細・パケット解剖・難所解説**: [`docs/guide.html`](docs/guide.html)（CSI シミュレータ・1042B UDP パケット解説）
+- 💻 **Google Colab 解析・AI 学習ノートブック**: [`notebooks/csi_analysis_colab.ipynb`](notebooks/csi_analysis_colab.ipynb)（Drive 直結・増分 `.npz` 変換・4クラス可視化・ベースライン分類）
 
 > このリポジトリには OS イメージ・パスワード・Wi-Fi 情報を含めません。
 

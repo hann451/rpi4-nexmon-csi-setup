@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>はじめての Wi-Fi CSI 実験システム 超やさしい全体図＆用語辞典</title>
+<style>
+  :root {
+    --bg: #0b1120;
+    --surface: #111827;
+    --card: #1e293b;
+    --card-2: #0f172a;
+    --border: #334155;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --blue: #38bdf8;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --purple: #c084fc;
+    --pink: #f472b6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    line-height: 1.7;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 22px 16px 64px; }
+  .hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #064e3b 100%);
+    border: 1px solid var(--border); border-radius: 18px; padding: 26px 22px; margin-bottom: 20px;
+  }
+  .hero h1 { margin: 0 0 8px; font-size: 1.65rem; }
+  .hero p { margin: 0; color: #cbd5e1; font-size: 0.96rem; }
+  .goal-box {
+    margin-top: 16px; background: rgba(15,23,42,0.75); border: 1px solid var(--green);
+    border-radius: 12px; padding: 14px 16px; font-size: 0.98rem;
+  }
+  .goal-box strong { color: var(--green); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px; margin-bottom: 18px;
+  }
+  h2 { margin: 0 0 10px; font-size: 1.2rem; color: var(--blue); }
+  p { margin: 0 0 10px; font-size: 0.94rem; }
+
+  /* Progress tracker */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+  .step {
+    background: var(--card-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+  }
+  .step.done { border-color: var(--green); }
+  .step.now { border-color: var(--amber); background: rgba(251,191,36,0.08); }
+  .step .st-tag { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; display: inline-block; margin-bottom: 6px; }
+  .step.done .st-tag { background: rgba(52,211,153,0.18); color: var(--green); }
+  .step.now .st-tag { background: rgba(251,191,36,0.22); color: var(--amber); }
+  .step h3 { margin: 0 0 4px; font-size: 0.96rem; }
+  .step small { color: var(--muted); font-size: 0.82rem; display: block; }
+
+  /* Interactive System Diagram */
+  .node-btn { cursor: pointer; transition: opacity 0.15s ease; }
+  .node-btn:hover { opacity: 0.86; }
+  .detail-box {
+    margin-top: 12px; padding: 14px 16px; border-radius: 12px;
+    background: var(--card-2); border: 1px solid var(--blue);
+  }
+  .detail-box h3 { margin: 0 0 6px; font-size: 1.05rem; color: var(--blue); }
+  .detail-box .metaphor { color: var(--amber); font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; }
+
+  /* Glossary */
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+  .filter-bar input {
+    flex: 1; min-width: 180px; padding: 8px 12px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--card-2); color: var(--text); font-size: 0.9rem;
+  }
+  .fbtn {
+    padding: 7px 12px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--card-2); color: var(--muted); font-weight: 700; font-size: 12.5px; cursor: pointer;
+  }
+  .fbtn.active { border-color: var(--blue); color: var(--text); background: rgba(56,189,248,0.16); }
+  .gloss-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .gcard {
+    background: var(--card-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+  }
+  .gcard .ghead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .gcard .gterm { font-weight: 800; font-size: 0.98rem; color: var(--text); }
+  .gcard .gcat { font-size: 11px; color: var(--blue); background: rgba(56,189,248,0.14); padding: 2px 7px; border-radius: 999px; }
+  .gcard .ganalogy { font-size: 0.85rem; color: var(--amber); font-weight: 700; margin-bottom: 4px; }
+  .gcard p { margin: 0; font-size: 0.86rem; color: #cbd5e1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>🌱 はじめての Wi-Fi CSI 実験システム 超やさしい全体図＆用語辞典</h1>
+    <p>専門用語をまったく知らなくても、「いま自分は何をしていて、それぞれの機械が何をしているのか」が 3 分でわかるガイドです。</p>
+    <div class="goal-box">
+      <strong>💡 一言でいうと、あなたが今作っているもの：</strong><br>
+      カメラも人感センサーも置かずに、<strong>部屋を飛び交う Wi-Fi 電波のわずかな揺らぎだけを見て「人がいるか」「窓が開いているか」を AI に当てさせる自動実験装置</strong>です。
+    </div>
+  </div>
+
+  <!-- Progress Map -->
+  <div class="card">
+    <h2>📍 いま自分はどの段階にいる？（全体の 4 ステップ）</h2>
+    <div class="steps">
+      <div class="step done">
+        <span class="st-tag">✅ ステップ 1：完了</span>
+        <h3>電波録音機をつくる</h3>
+        <small>ラズパイの Wi-Fi を改造（Nexmon）して、普通の PC では見えない「電波の細かい波（CSI）」を録音できるようにした。</small>
+      </div>
+      <div class="step done">
+        <span class="st-tag">✅ ステップ 2：稼働中！</span>
+        <h3>24時間自動で貯める</h3>
+        <small>ラズパイが 5 分ごとに電波を録音し、スマホで押した答え（在室/窓開閉）と一緒に Google Drive (5TB) へ日付別で自動保存中！（すでに 12.6GB 収集済み）</small>
+      </div>
+      <div class="step done">
+        <span class="st-tag">✅ ステップ 3：完了</span>
+        <h3>設計図を保存する</h3>
+        <small>ここまでの作り方とプログラムを GitHub に安全にバックアップした。</small>
+      </div>
+      <div class="step now">
+        <span class="st-tag">👉 ステップ 4：いまここ！</span>
+        <h3>AI に勉強させる</h3>
+        <small>Google Colab（強い GPU 付きレンタル PC）で Google Drive のデータを開き、電波の違いをグラフで見たり AI に当てさせたりする段階！</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clickable System Architecture Diagram -->
+  <div class="card">
+    <h2>🗺️ 全体のシステム構成図（6人の登場人物をクリックして役割を見る）</h2>
+    <p style="color:var(--muted); font-size:0.86rem;">下の図の箱をクリックすると、「何に例えられるか」「何をしているか」が下に表示されます。</p>
+
+    <svg viewBox="0 0 940 360" style="width:100%; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arB" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#38bdf8"/></marker>
+        <marker id="arG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#34d399"/></marker>
+        <marker id="arP" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#c084fc"/></marker>
+        <marker id="arA" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/></marker>
+      </defs>
+
+      <!-- Room Box -->
+      <rect x="12" y="12" width="435" height="230" rx="14" fill="rgba(56,189,248,0.05)" stroke="#334155" stroke-dasharray="6,4"/>
+      <text x="26" y="34" fill="#94a3b8" font-size="12" font-weight="bold">🏠 あなたの部屋（24時間自動で動いている場所）</text>
+
+      <!-- Node 1: Router/Extender -->
+      <g class="node-btn" onclick="selectNode('ap')">
+        <rect x="28" y="52" width="165" height="76" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+        <text x="110" y="78" fill="#38bdf8" font-size="13" font-weight="bold" text-anchor="middle">📶 Wi-Fi ルーター</text>
+        <text x="110" y="98" fill="#cbd5e1" font-size="11" text-anchor="middle">「懐中電灯」役</text>
+        <text x="110" y="115" fill="#94a3b8" font-size="10.5" text-anchor="middle">部屋に電波を照らし続ける</text>
+      </g>
+
+      <!-- Node 2: Raspberry Pi -->
+      <g class="node-btn" onclick="selectNode('rpi')">
+        <rect x="242" y="52" width="190" height="92" rx="12" fill="#0f172a" stroke="#34d399" stroke-width="2"/>
+        <text x="337" y="78" fill="#34d399" font-size="13" font-weight="bold" text-anchor="middle">🍓 Raspberry Pi 4B</text>
+        <text x="337" y="98" fill="#cbd5e1" font-size="11" text-anchor="middle">「超精密な録音機」役</text>
+        <text x="337" y="116" fill="#94a3b8" font-size="10.5" text-anchor="middle">電波の波を 1秒90回 録音</text>
+        <text x="337" y="132" fill="#94a3b8" font-size="10" text-anchor="middle">5分ごとに .pcap 保存</text>
+      </g>
+
+      <!-- Wave Arrow AP -> RPi -->
+      <line x1="193" y1="90" x2="236" y2="90" stroke="#38bdf8" stroke-width="2.2" marker-end="url(#arB)"/>
+      <text x="215" y="82" fill="#38bdf8" font-size="10" text-anchor="middle">電波</text>
+
+      <!-- Node 3: Smartphone -->
+      <g class="node-btn" onclick="selectNode('phone')">
+        <rect x="28" y="156" width="175" height="72" rx="12" fill="#0f172a" stroke="#c084fc" stroke-width="2"/>
+        <text x="115" y="182" fill="#c084fc" font-size="13" font-weight="bold" text-anchor="middle">📱 あなたのスマホ</text>
+        <text x="115" y="201" fill="#cbd5e1" font-size="11" text-anchor="middle">「答えを教える先生」役</text>
+        <text x="115" y="218" fill="#94a3b8" font-size="10" text-anchor="middle">在室・窓開閉ボタンをタップ</text>
+      </g>
+      <line x1="203" y1="192" x2="295" y2="148" stroke="#c084fc" stroke-width="2" marker-end="url(#arP)"/>
+      <text x="275" y="186" fill="#c084fc" font-size="10" text-anchor="middle">Tailscale経由</text>
+
+      <!-- Node 4: Google Drive -->
+      <g class="node-btn" onclick="selectNode('drive')">
+        <rect x="495" y="52" width="195" height="104" rx="12" fill="#064e3b" stroke="#34d399" stroke-width="2.2"/>
+        <text x="592" y="80" fill="#a7f3d0" font-size="14" font-weight="bold" text-anchor="middle">☁️ Google Drive (5TB)</text>
+        <text x="592" y="101" fill="#ecfdf5" font-size="11.5" text-anchor="middle">「巨大なデータ倉庫」役</text>
+        <text x="592" y="121" fill="#d1fae5" font-size="10.5" text-anchor="middle">日付別に .pcap と CSV を</text>
+        <text x="592" y="138" fill="#d1fae5" font-size="10.5" text-anchor="middle">自動で整理して保管</text>
+      </g>
+      <line x1="432" y1="98" x2="489" y2="98" stroke="#34d399" stroke-width="2.2" marker-end="url(#arG)"/>
+      <text x="460" y="90" fill="#34d399" font-size="10" text-anchor="middle">rclone自動送信</text>
+
+      <!-- Node 5: Google Colab -->
+      <g class="node-btn" onclick="selectNode('colab')">
+        <rect x="735" y="52" width="190" height="104" rx="12" fill="#1e1b4b" stroke="#fbbf24" stroke-width="2.2"/>
+        <text x="830" y="80" fill="#fde68a" font-size="14" font-weight="bold" text-anchor="middle">💻 Google Colab</text>
+        <text x="830" y="101" fill="#fef3c7" font-size="11.5" text-anchor="middle">「GPU付きレンタル研究室」</text>
+        <text x="830" y="121" fill="#cbd5e1" font-size="10.5" text-anchor="middle">Drive に直結（マウント）して</text>
+        <text x="830" y="138" fill="#cbd5e1" font-size="10.5" text-anchor="middle">グラフ確認 ＆ AI 学習</text>
+      </g>
+      <line x1="690" y1="104" x2="729" y2="104" stroke="#fbbf24" stroke-width="2.2" marker-end="url(#arA)"/>
+      <text x="710" y="95" fill="#fbbf24" font-size="10" text-anchor="middle">直結</text>
+
+      <!-- Node 6: GitHub -->
+      <g class="node-btn" onclick="selectNode('github')">
+        <rect x="495" y="210" width="430" height="84" rx="12" fill="#0f172a" stroke="#f472b6" stroke-width="1.8"/>
+        <text x="710" y="238" fill="#f472b6" font-size="13.5" font-weight="bold" text-anchor="middle">🐙 GitHub (hann451/rpi4-nexmon-csi-setup)</text>
+        <text x="710" y="259" fill="#cbd5e1" font-size="11.5" text-anchor="middle">「設計図とプログラムの金庫」役（※重い電波データやパスワードは入れない）</text>
+        <text x="710" y="278" fill="#94a3b8" font-size="10.5" text-anchor="middle">手順書・app.py・Colabノートブック・この図解教材を安全に保管</text>
+      </g>
+    </svg>
+
+    <div id="node-detail" class="detail-box">
+      <h3 id="nd-title">🍓 Raspberry Pi 4B（超精密な録音機）</h3>
+      <div id="nd-meta" class="metaphor">役割：部屋の Wi-Fi 電波の揺らぎを 24時間休まず記録し、Google Drive へ運ぶ係</div>
+      <p id="nd-desc">手のひらサイズの小型 Linux パソコンです。普通に使うと「電波が強いか弱いか（1個の数字）」しか見えませんが、Nexmon という改造ファームウェアを入れたことで、1秒に約90回・256本の周波数ごとの波（CSI）を記録できるようになりました。また、スマホから開ける小さな Web サイト（ポート8080）も裏で動かしています。</p>
+    </div>
+  </div>
+
+  <!-- Searchable Glossary -->
+  <div class="card">
+    <h2>📖 これだけ知っておけば大丈夫！超やさしい専門用語辞典（全 18 語）</h2>
+    <div class="filter-bar">
+      <input id="gsearch" type="text" placeholder="用語を検索（例：ランタイム、マウント、pcap、Tailscale...）" oninput="renderGlossary()" />
+      <button class="fbtn active" onclick="setCat('all', this)">すべて</button>
+      <button class="fbtn" onclick="setCat('wave', this)">電波・データ</button>
+      <button class="fbtn" onclick="setCat('rpi', this)">ラズパイ・通信</button>
+      <button class="fbtn" onclick="setCat('cloud', this)">クラウド・AI</button>
+    </div>
+    <div id="gloss-grid" class="gloss-grid"></div>
+  </div>
+</div>
+
+<script>
+const NODES = {
+  ap: {
+    title: '📶 Wi-Fi ルーター ＆ 中継器（懐中電灯役）',
+    meta: '役割：部屋中に Wi-Fi 電波を照らし続ける光源',
+    desc: '暗闇でモノを見るために懐中電灯の光が必要なように、Wi-Fi センシングではルーターや中継器（Extender-5G-01C0）が出す 5GHz 電波を「光」として使います。あなたが部屋に入ったり窓を開けたりすると、電波の反射の仕方が微妙に変わります。'
+  },
+  rpi: {
+    title: '🍓 Raspberry Pi 4B（超精密な録音機）',
+    meta: '役割：反射してきた Wi-Fi 電波の波（CSI）を 24時間記録し、Google Drive へ送る係',
+    desc: '有線 LAN でネットに繋がっており、電源が入っている限り 5 分ごとに電波データ（.pcap）を区切って Google Drive へ自動送信します。送り終わった古いファイルは自動で消すので、容量が満杯になりません。'
+  },
+  phone: {
+    title: '📱 あなたのスマホ（答え合わせを教える先生）',
+    meta: '役割：「今部屋にいる」「窓を開けた」という正解ラベルを記録するリモコン',
+    desc: 'AI は「電波の波」だけを見せられても、それが在室なのか不在なのか分かりません。スマホで Tailscale を ON にして専用ページ（http://100.68.123.109:8080）のボタンを押すと、「何時何分何秒から在室になった」という答え合わせ表（labels.csv / segments.csv）が作られます。'
+  },
+  drive: {
+    title: '☁️ Google Drive 5TB（巨大なデータ倉庫）',
+    meta: '役割：ラズパイが録音した全データと答え合わせ表を日付別に保管する倉庫',
+    desc: 'rpi4_nexmon_csi フォルダの中に「2026-11-24/pcap/」のように日付別で自動整理されています。1日あたり約 9〜10 GB 溜まりますが、5TB あるので 1 年以上余裕で入ります。'
+  },
+  colab: {
+    title: '💻 Google Colab（GPU 付きレンタル研究室）',
+    meta: '役割：Google の高性能 PC（GPU）をブラウザから借りて、グラフ化や AI 学習をする場所',
+    desc: '自分のパソコンの性能や容量を使わずに、Google Drive の倉庫に直結（マウント）して AI に学習させられます。ランタイム接続が切れても、Google Drive の中に保存したデータは絶対に消えません。'
+  },
+  github: {
+    title: '🐙 GitHub（設計図とプログラムの金庫）',
+    meta: '役割：手順書・プログラム・ノートブックを履歴付きで安全に保管する場所',
+    desc: '重い電波データやパスワードは入れず、「この装置を最初から作り直すための手順とプログラム一式」だけを保管しています。別の PC からもいつでも見返せます。'
+  }
+};
+
+function selectNode(key) {
+  const n = NODES[key];
+  document.getElementById('nd-title').textContent = n.title;
+  document.getElementById('nd-meta').textContent = n.meta;
+  document.getElementById('nd-desc').textContent = n.desc;
+}
+
+const TERMS = [
+  { term: 'Wi-Fi CSI', cat: 'wave', analogy: '例え：電波の「レントゲン写真」', desc: 'Channel State Information の略。Wi-Fi 電波が壁・家具・人・窓に反射して届くときの「細かい波の形（振幅と位相）」のデータ。これの変化から人の存在や動きを読み取ります。' },
+  { term: 'RSSI', cat: 'wave', analogy: '例え：電波の「全体の明るさ（1個の数字）」', desc: 'スマホの Wi-Fi アンテナの本数のもとになる「電波の強さ」。平均値 1 個だけなので、CSI に比べて細かい環境変化が見えにくいです。' },
+  { term: 'サブキャリア', cat: 'wave', analogy: '例え：Wi-Fi の中に並ぶ「256本の細い音のレーン」', desc: '80MHz 幅の Wi-Fi 電波は、実は 256 本の細かい周波数の波が束になって飛んでいます。CSI はこの 1 本 1 本の強さとズレを記録します。' },
+  { term: '.pcap ファイル', cat: 'wave', analogy: '例え：電波データの「生録音テープ」', desc: 'ネットワークのパケットをそのまま保存したファイル形式。メモ帳や Excel では読めませんが、Python（Google Colab）や Wireshark で開けます。' },
+  { term: '.csv ファイル (labels / segments)', cat: 'wave', analogy: '例え：Excel で開ける「答え合わせ一覧表」', desc: 'カンマ区切りの表データ。labels.csv は「いつスマホのボタンを押したか」、segments.csv は「どの .pcap が何時〜何時で、どの状態だったか」の索引表です。' },
+  { term: '.npz ファイル', cat: 'wave', analogy: '例え：生テープから要点だけ抜き出した「軽いダイジェスト版」', desc: 'Colab で 30MB の .pcap から必要な数値だけ抜き出して数百 KB に圧縮した NumPy 専用ファイル。AI 学習を何十倍も速くするために作ります。' },
+  { term: 'Raspberry Pi (ラズパイ)', cat: 'rpi', analogy: '例え：手のひらサイズの超省電力パソコン', desc: '今回使っている小型 PC（4B）。電気代が安く静かなので、部屋に置きっぱなしで 24 時間ずっと電波を記録する役にぴったりです。' },
+  { term: 'USB ブート', cat: 'rpi', analogy: '例え：SD カードの代わりに USB メモリから起動すること', desc: 'ラズパイの OS を microSD ではなく丈夫で容量の大きい USB メモリに入れて動かしています。' },
+  { term: 'カーネル (Linux Kernel)', cat: 'rpi', analogy: '例え：OS の「心臓部（脳幹）」', desc: 'ハードウェアとアプリを仲介する OS の中心。Nexmon は特定の心臓部（5.10.92-v7l+）にしか合わないため、勝手に更新されないようロック（hold）しています。' },
+  { term: 'ファームウェア & ドライバ', cat: 'rpi', analogy: '例え：Wi-Fi チップ専用の「頭脳」と「通訳」', desc: 'ファームウェアは Wi-Fi チップの中で動くプログラム、ドライバ（brcmfmac.ko）はそれを OS に繋ぐ通訳です。この2つを Nexmon 版に書き換えました。' },
+  { term: 'Nexmon', cat: 'rpi', analogy: '例え：Wi-Fi チップの隠し機能を開く改造ツール', desc: 'ドイツの大学研究チームが公開しているツール。通常は捨てられてしまう Wi-Fi チップ内部の CSI データを外に取り出せるようにします。' },
+  { term: 'SSH', cat: 'rpi', analogy: '例え：別の PC からラズパイを「遠隔操作するリモコン画面」', desc: 'ラズパイにモニターやキーボードを繋がなくても、Windows の PowerShell から文字コマンドで安全に操作できる仕組みです。' },
+  { term: 'Tailscale', cat: 'rpi', analogy: '例え：自分のスマホ・PC・ラズパイだけを繋ぐ「専用の秘密トンネル」', desc: '家の外（4G/5G 回線）にいても、まるで同じ家の Wi-Fi にいるかのように安全にラズパイの記録ページ（100.68.123.109:8080）を開ける VPN サービスです。' },
+  { term: 'rclone', cat: 'rpi', analogy: '例え：Google Drive への「自動宅配便ロボット」', desc: 'ラズパイから Google Drive へ自動でファイルを送るコマンドツール。送ったあとにラズパイ側の古い .pcap を消す仕事もやってくれます。' },
+  { term: 'systemd', cat: 'rpi', analogy: '例え：電源 ON で自動起動し、止まったら起こしてくれる「現場監督」', desc: 'csi-logger.service を登録した仕組み。停電や再起動があっても、人間が操作しなくても自動で記録と Web サイトを再開してくれます。' },
+  { term: 'Google Colab', cat: 'cloud', analogy: '例え：ブラウザから使える「Google のレンタル研究室」', desc: '自分の PC に Python や高い GPU を用意しなくても、ブラウザ上でそのまま AI のプログラムを動かせるサービスです。' },
+  { term: 'ランタイム', cat: 'cloud', analogy: '例え：Colab が毎回貸してくれる「時間貸しのレンタル PC」', desc: '「接続」を押すと Google のクラウド PC が 1 台割り当てられます。使い終わると返却されて中身が初期化されますが、Google Drive の中のファイルは絶対に消えません。' },
+  { term: 'マウント (Mount)', cat: 'cloud', analogy: '例え：レンタル PC に「自分の Google Drive を外付け HDD として挿す」こと', desc: 'drive.mount("/content/drive") を実行すると、Google Drive のファイルがそのまま Colab のフォルダとして読み書きできるようになります。' },
+  { term: 'Git / GitHub', cat: 'cloud', analogy: '例え：プログラムの「変更履歴ノート」と「クラウド金庫」', desc: 'Git はファイルの変更履歴を記録する仕組み、GitHub はそれをネット上に保存・公開する場所です。' }
+];
+
+let currentCat = 'all';
+function setCat(c, btn) {
+  currentCat = c;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderGlossary();
+}
+
+function renderGlossary() {
+  const q = document.getElementById('gsearch').value.trim().toLowerCase();
+  const catNames = { wave: '電波・データ', rpi: 'ラズパイ・通信', cloud: 'クラウド・AI' };
+  const grid = document.getElementById('gloss-grid');
+  grid.innerHTML = '';
+  for (const t of TERMS) {
+    if (currentCat !== 'all' && t.cat !== currentCat) continue;
+    const hay = (t.term + ' ' + t.analogy + ' ' + t.desc).toLowerCase();
+    if (q && !hay.includes(q)) continue;
+    const div = document.createElement('div');
+    div.className = 'gcard';
+    div.innerHTML = `
+      <div class="ghead"><span class="gterm">${t.term}</span><span class="gcat">${catNames[t.cat]}</span></div>
+      <div class="ganalogy">${t.analogy}</div>
+      <p>${t.desc}</p>
+    `;
+    grid.appendChild(div);
+  }
+}
+
+renderGlossary();
+</script>
+</body>
+</html>
